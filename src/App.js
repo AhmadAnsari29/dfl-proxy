@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
 
 // ─────────────────────────────────────────────────────────────
@@ -327,22 +327,6 @@ function ThemeToggle({ dark, onToggle, t }) {
   );
 }
 
-// Perf Row
-function PerfRow({ label, ok, value, t }) {
-  return (
-    <div style={{
-      display:"flex", alignItems:"center", justifyContent:"space-between",
-      padding:"10px 0", borderBottom:`1px solid ${t.border}`,
-    }}>
-      <span style={{ fontSize:12, color:t.textSub }}>{label}</span>
-      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-        <span style={{ fontSize:13, fontWeight:700, color:ok ? t.green : t.red }}>{value}</span>
-        <span style={{ fontSize:14 }}>{ok ? "✅" : "❌"}</span>
-      </div>
-    </div>
-  );
-}
-
 // Debug Panel
 function DebugPanel({ log, t }) {
   const [open, setOpen] = useState(false);
@@ -394,7 +378,7 @@ export default function App() {
   const [records,    setRecords]    = useState([]);
   const [selIdx,     setSelIdx]     = useState(0);
   const [loading,    setLoading]    = useState(true);
-  const [loadStep,   setLoadStep]   = useState("Connecting...");
+  const [loadStep]   = useState("Connecting...");
   const [locName,    setLocName]    = useState("Digital Fastlane");
   const [isDemo,     setIsDemo]     = useState(false);
   const [debugLog,   setDebugLog]   = useState([]);
@@ -490,7 +474,7 @@ export default function App() {
       intervalRef.current = setInterval(() => loadData(true), CONFIG.REFRESH_INTERVAL_MS);
     }
     return () => clearInterval(intervalRef.current);
-  }, []);
+  }, [loadData]);
 
   const m = records[selIdx] ? calcMetrics(records[selIdx]) : null;
   const months = records.map((r, i) => {
@@ -499,11 +483,6 @@ export default function App() {
   });
 
   const trendData = isDemo ? TREND_DEMO : [{ m: m?.month || "Now", rev: m?.rev || 0, spend: m?.tSpend || 0 }];
-
-  // Common chart props
-  const chartProps = {
-    style: { fontFamily: "Poppins,sans-serif" },
-  };
 
   if (loading) return (
     <div style={{
