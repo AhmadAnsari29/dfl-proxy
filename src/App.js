@@ -10,7 +10,7 @@ import {
 const CONFIG = {
   PROXY_URL:            "https://dfl-proxy.onrender.com",        // e.g. "https://dfl-proxy.onrender.com"
   FALLBACK_LOCATION_ID: "YTgWCf3WtDxoZw4kKaN1",
-  CUSTOM_OBJECT_KEY:    "monthly_business_scorecards",        // auto-discovered, or paste manually
+  CUSTOM_OBJECT_KEY:    "",        // auto-discovered, or paste manually
   REFRESH_INTERVAL_MS:  5 * 60 * 1000, // auto-refresh every 5 minutes
   LOGO_URL: "https://0fa31a16.delivery.rocketcdn.me/wp-content/uploads/2026/01/Untitled-design-2026-01-09T132206.660-1.png",
 };
