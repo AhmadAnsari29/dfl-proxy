@@ -8,7 +8,7 @@ import {
 // CONFIG — update PROXY_URL after deploying server.js to Render
 // ─────────────────────────────────────────────────────────────
 const CONFIG = {
-  PROXY_URL:            "",        // e.g. "https://dfl-proxy.onrender.com"
+  PROXY_URL:            "https://dfl-proxy.onrender.com",        // e.g. "https://dfl-proxy.onrender.com"
   FALLBACK_LOCATION_ID: "YTgWCf3WtDxoZw4kKaN1",
   CUSTOM_OBJECT_KEY:    "",        // auto-discovered, or paste manually
   REFRESH_INTERVAL_MS:  5 * 60 * 1000, // auto-refresh every 5 minutes
