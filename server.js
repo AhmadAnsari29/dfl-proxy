@@ -86,7 +86,7 @@ app.get("/api/records/:locationId", async (req, res) => {
       const result = await method();
       attempts.push({ label: result.label, status: result.status, keys: Object.keys(result.data || {}) });
       const recs = result.data?.records || result.data?.data || result.data?.hits || result.data?.objects || [];
-      if (result.status === 200) {
+      if (result.status === 200 || result.status === 201) {
         return res.json({ success: true, method: result.label, records: recs, attempts, raw: result.data });
       }
     } catch (e) {
