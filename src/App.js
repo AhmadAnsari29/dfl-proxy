@@ -9,7 +9,7 @@ import {
 // CONFIG — update PROXY_URL after deploying server.js to Render
 // ─────────────────────────────────────────────────────────────
 const CONFIG = {
-  PROXY_URL:            "https://dfl-proxy.onrender.com/",        // e.g. "https://dfl-proxy.onrender.com"
+  PROXY_URL:            "https://dfl-proxy.onrender.com",        // e.g. "https://dfl-proxy.onrender.com"
   FALLBACK_LOCATION_ID: "YTgWCf3WtDxoZw4kKaN1",
   CUSTOM_OBJECT_KEY:    "custom_objects.monthly_business_scorecards",        // auto-discovered, or paste manually
   REFRESH_INTERVAL_MS:  5 * 60 * 1000, // auto-refresh every 5 minutes
@@ -91,13 +91,22 @@ async function proxyGet(path) {
 
 function calcMetrics(record) {
   const f      = record.properties || record.fields || record.fieldValues || record;
-  const rev    = gf(f,"monthly_revenue"),    profit = gf(f,"monthly_profit"),
-    jobs       = gf(f,"jobs_completed"),     newC   = gf(f,"new_clients_served"),
-    existC     = gf(f,"existing_clients_served"),
-    tSpend     = gf(f,"total_marketing_spend"),
-    mSpend     = gf(f,"meta_ads_spend"),     gSpend = gf(f,"google_ads_spend"),
-    revM       = gf(f,"revenue_from_meta_ads"), revG = gf(f,"revenue_from_google_ads"),
-    lM         = gf(f,"new_clients_from_facebook"), lG = gf(f,"new_clients_from_google");
+  // Helper that handles both plain numbers and GHL currency objects {currency, value}
+  const gv = (k) => {
+    const v = f[k];
+    if (v === null || v === undefined) return 0;
+    if (typeof v === "object" && "value" in v) return parseFloat(v.value) || 0;
+    return parseFloat(v) || 0;
+  };
+  const rev    = gv("monthly_revenue"),       profit = gv("monthly_profit"),
+    jobs       = gv("jobs_completed"),         newC   = gv("new_clients_served"),
+    existC     = gv("existing_clients_served"),
+    tSpend     = gv("total_marketing_spend"),
+    mSpend     = gv("meta_ads_spend"),         gSpend = gv("google_ads_spend"),
+    revM       = gv("revenue_from_meta") || gv("revenue_from_meta_ads"),
+    revG       = gv("revenue_from_google") || gv("revenue_from_google_ads"),
+    lM         = gv("new_clients_from_facebook"),
+    lG         = gv("new_clients_from_google");
   return {
     rev, profit, jobs, newC, existC, tSpend, mSpend, gSpend, revM, revG, lM, lG,
     avgJob:   jobs>0   ? rev/jobs    : 0,
@@ -108,7 +117,7 @@ function calcMetrics(record) {
     metaRoas: mSpend>0 ? revM/mSpend : 0,
     gRoas:    gSpend>0 ? revG/gSpend : 0,
     margin:   rev>0    ? (profit/rev)*100 : 0,
-    month:    f.reporting_month || f.reportingMonth || record.name || "Latest Record",
+    month:    f.reporting_month ? new Date(f.reporting_month).toLocaleDateString("en-AU", {month:"long", year:"numeric"}) : (f.reportingMonth || record.name || "Latest Record"),
   };
 }
 
@@ -492,7 +501,9 @@ export default function App() {
   const m = records[selIdx] ? calcMetrics(records[selIdx]) : null;
   const months = records.map((r, i) => {
     const f = r.properties || r.fields || r.fieldValues || r;
-    return f.reporting_month || f.reportingMonth || `Record ${i+1}`;
+    const rm = f.reporting_month || f.reportingMonth;
+    if (rm) { try { return new Date(rm).toLocaleDateString("en-AU", {month:"long", year:"numeric"}); } catch { return rm; } }
+    return record.name || `Record ${i+1}`;
   });
 
   const trendData = isDemo ? TREND_DEMO : [{ m: m?.month || "Now", rev: m?.rev || 0, spend: m?.tSpend || 0 }];
