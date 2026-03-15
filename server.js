@@ -15,166 +15,100 @@ const HDRS = {
   "Content-Type":  "application/json",
 };
 
-// ── Health check
 app.get("/", (req, res) => {
   res.json({ status: "DFL Proxy running ✅", time: new Date().toISOString() });
 });
 
-// ── GET location
 app.get("/api/location/:locationId", async (req, res) => {
   try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/locations/${req.params.locationId}`,
-      { headers: HDRS }
-    );
+    const r = await fetch(`https://services.leadconnectorhq.com/locations/${req.params.locationId}`, { headers: HDRS });
     res.status(r.status).json(await r.json());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── DISCOVERY endpoint — tries every possible GHL custom objects format
-// and returns whichever one works with actual records
 app.get("/api/discover/:locationId", async (req, res) => {
   const lid = req.params.locationId;
-  const results = [];
-
-  // Format 1 — list all custom object schemas
   try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/objects/?locationId=${lid}`,
-      { headers: HDRS }
-    );
+    const r = await fetch(`https://services.leadconnectorhq.com/objects/?locationId=${lid}`, { headers: HDRS });
     const d = await r.json();
-    results.push({ endpoint: "objects/?locationId", status: r.status, data: d });
-  } catch (e) {
-    results.push({ endpoint: "objects/?locationId", error: e.message });
-  }
-
-  // Format 2 — custom-objects list
-  try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/custom-objects/?locationId=${lid}`,
-      { headers: HDRS }
-    );
-    const d = await r.json();
-    results.push({ endpoint: "custom-objects/?locationId", status: r.status, data: d });
-  } catch (e) {
-    results.push({ endpoint: "custom-objects/?locationId", error: e.message });
-  }
-
-  // Format 3 — contacts/custom-fields
-  try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/contacts/custom-fields?locationId=${lid}`,
-      { headers: HDRS }
-    );
-    const d = await r.json();
-    results.push({ endpoint: "contacts/custom-fields", status: r.status, keys: Object.keys(d) });
-  } catch (e) {
-    results.push({ endpoint: "contacts/custom-fields", error: e.message });
-  }
-
-  res.json({ results });
+    res.json({ results: [{ endpoint: "objects/?locationId", status: r.status, data: d }] });
+  } catch (e) { res.json({ results: [{ error: e.message }] }); }
 });
 
-// ── GET records — tries multiple key formats automatically
 app.get("/api/records/:locationId", async (req, res) => {
-  const lid = req.params.locationId;
-  const keyHint = req.query.key || "";
+  const lid      = req.params.locationId;
+  const keyHint  = req.query.key || "custom_objects.monthly_business_scorecards";
+  const OBJECT_ID = "69852e100844284f4cd2b338";
+  const attempts  = [];
 
-  // Build list of keys to try
-  const keysToTry = [];
-  if (keyHint) keysToTry.push(keyHint);
+  // Try 5 different methods to find records
+  const methods = [
+    // POST search with key
+    async () => {
+      const url = `https://services.leadconnectorhq.com/objects/${keyHint}/records/search`;
+      const r = await fetch(url, { method: "POST", headers: HDRS, body: JSON.stringify({ locationId: lid, page: 1, pageLimit: 50 }) });
+      const d = await r.json();
+      return { label: "POST search key", status: r.status, data: d };
+    },
+    // POST search with ID
+    async () => {
+      const url = `https://services.leadconnectorhq.com/objects/${OBJECT_ID}/records/search`;
+      const r = await fetch(url, { method: "POST", headers: HDRS, body: JSON.stringify({ locationId: lid, page: 1, pageLimit: 50 }) });
+      const d = await r.json();
+      return { label: "POST search ID", status: r.status, data: d };
+    },
+    // GET with key
+    async () => {
+      const url = `https://services.leadconnectorhq.com/objects/${keyHint}/records?locationId=${lid}&limit=50`;
+      const r = await fetch(url, { headers: HDRS });
+      const d = await r.json();
+      return { label: "GET key", status: r.status, data: d };
+    },
+    // GET with ID
+    async () => {
+      const url = `https://services.leadconnectorhq.com/objects/${OBJECT_ID}/records?locationId=${lid}&limit=50`;
+      const r = await fetch(url, { headers: HDRS });
+      const d = await r.json();
+      return { label: "GET ID", status: r.status, data: d };
+    },
+    // POST with encoded key
+    async () => {
+      const encoded = encodeURIComponent(keyHint);
+      const url = `https://services.leadconnectorhq.com/objects/${encoded}/records/search`;
+      const r = await fetch(url, { method: "POST", headers: HDRS, body: JSON.stringify({ locationId: lid, page: 1, pageLimit: 50 }) });
+      const d = await r.json();
+      return { label: "POST encoded key", status: r.status, data: d };
+    },
+  ];
 
-  // Common GHL custom object key formats
-  keysToTry.push(
-    "monthly_business_scorecard",
-    "monthly_business_scorecards",
-    "custom_objects.monthly_business_scorecard",
-    "custom_objects.monthly_business_scorecards",
-    "business_scorecard",
-    "scorecard",
-    "monthly_scorecard"
-  );
-
-  const attempts = [];
-
-  for (const key of keysToTry) {
-    // Try format 1: /objects/{key}/records
+  for (const method of methods) {
     try {
-      const url1 = `https://services.leadconnectorhq.com/objects/${key}/records?locationId=${lid}&limit=50`;
-      const r1 = await fetch(url1, { headers: HDRS });
-      const d1 = await r1.json();
-      attempts.push({ key, format: "objects/{key}/records", status: r1.status, data: d1 });
-
-      // If we got records, return immediately
-      const recs = d1.records || d1.data || d1.objects || [];
-      if (r1.ok && Array.isArray(recs) && recs.length > 0) {
-        return res.json({
-          success: true,
-          key,
-          format: "objects/{key}/records",
-          records: recs,
-          attempts,
-        });
+      const result = await method();
+      attempts.push({ label: result.label, status: result.status, keys: Object.keys(result.data || {}) });
+      const recs = result.data?.records || result.data?.data || result.data?.hits || result.data?.objects || [];
+      if (result.status === 200) {
+        return res.json({ success: true, method: result.label, records: recs, attempts, raw: result.data });
       }
     } catch (e) {
-      attempts.push({ key, format: "objects/{key}/records", error: e.message });
-    }
-
-    // Try format 2: /custom-objects/{key}/records  
-    try {
-      const url2 = `https://services.leadconnectorhq.com/custom-objects/${key}/records?locationId=${lid}&limit=50`;
-      const r2 = await fetch(url2, { headers: HDRS });
-      const d2 = await r2.json();
-      attempts.push({ key, format: "custom-objects/{key}/records", status: r2.status });
-
-      const recs = d2.records || d2.data || d2.objects || [];
-      if (r2.ok && Array.isArray(recs) && recs.length > 0) {
-        return res.json({
-          success: true,
-          key,
-          format: "custom-objects/{key}/records",
-          records: recs,
-          attempts,
-        });
-      }
-    } catch (e) {
-      attempts.push({ key, format: "custom-objects/{key}/records", error: e.message });
+      attempts.push({ error: e.message });
     }
   }
 
-  // Nothing worked — return all attempts for debugging
   res.json({ success: false, records: [], attempts });
 });
 
-// ── Original objects endpoint (keep for compatibility)
 app.get("/api/objects", async (req, res) => {
-  const { locationId } = req.query;
   try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/objects/?locationId=${locationId}`,
-      { headers: HDRS }
-    );
+    const r = await fetch(`https://services.leadconnectorhq.com/objects/?locationId=${req.query.locationId}`, { headers: HDRS });
     res.status(r.status).json(await r.json());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get("/api/objects/:objectKey/records", async (req, res) => {
-  const { locationId } = req.query;
-  const { objectKey }  = req.params;
   try {
-    const r = await fetch(
-      `https://services.leadconnectorhq.com/objects/${objectKey}/records?locationId=${locationId}&limit=50`,
-      { headers: HDRS }
-    );
+    const r = await fetch(`https://services.leadconnectorhq.com/objects/${req.params.objectKey}/records?locationId=${req.query.locationId}&limit=50`, { headers: HDRS });
     res.status(r.status).json(await r.json());
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.listen(PORT, () => console.log(`✅ DFL Proxy running on port ${PORT}`));
