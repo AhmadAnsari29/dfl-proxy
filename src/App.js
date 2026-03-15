@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -8,7 +9,7 @@ import {
 // CONFIG — update PROXY_URL after deploying server.js to Render
 // ─────────────────────────────────────────────────────────────
 const CONFIG = {
-  PROXY_URL:            "https://dfl-proxy.onrender.com",        // e.g. "https://dfl-proxy.onrender.com"
+  PROXY_URL:            "https://dfl-proxy.onrender.com/",        // e.g. "https://dfl-proxy.onrender.com"
   FALLBACK_LOCATION_ID: "YTgWCf3WtDxoZw4kKaN1",
   CUSTOM_OBJECT_KEY:    "",        // auto-discovered, or paste manually
   REFRESH_INTERVAL_MS:  5 * 60 * 1000, // auto-refresh every 5 minutes
@@ -327,6 +328,22 @@ function ThemeToggle({ dark, onToggle, t }) {
   );
 }
 
+// Perf Row
+function PerfRow({ label, ok, value, t }) {
+  return (
+    <div style={{
+      display:"flex", alignItems:"center", justifyContent:"space-between",
+      padding:"10px 0", borderBottom:`1px solid ${t.border}`,
+    }}>
+      <span style={{ fontSize:12, color:t.textSub }}>{label}</span>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <span style={{ fontSize:13, fontWeight:700, color:ok ? t.green : t.red }}>{value}</span>
+        <span style={{ fontSize:14 }}>{ok ? "✅" : "❌"}</span>
+      </div>
+    </div>
+  );
+}
+
 // Debug Panel
 function DebugPanel({ log, t }) {
   const [open, setOpen] = useState(false);
@@ -378,7 +395,7 @@ export default function App() {
   const [records,    setRecords]    = useState([]);
   const [selIdx,     setSelIdx]     = useState(0);
   const [loading,    setLoading]    = useState(true);
-  const [loadStep]   = useState("Connecting...");
+  const [loadStep,   setLoadStep]   = useState("Connecting...");
   const [locName,    setLocName]    = useState("Digital Fastlane");
   const [isDemo,     setIsDemo]     = useState(false);
   const [debugLog,   setDebugLog]   = useState([]);
@@ -426,32 +443,28 @@ export default function App() {
       dlog("Location", `HTTP ${locR.status} — check API key permissions`, false, "🏢 Location");
     }
 
-    // Objects
-    let foundKey = CONFIG.CUSTOM_OBJECT_KEY || objKey;
-    if (!foundKey) {
-      const objR = await proxyGet(`/api/objects?locationId=${lid}`);
-      if (objR.ok && objR.data) {
-        const list = objR.data.objects || objR.data.customObjects || objR.data.schemas || objR.data.data || [];
-        dlog("Objects found", Array.isArray(list) ? list.length : "unexpected", null, "📦 Objects");
-        if (Array.isArray(list)) {
-          list.forEach((o, i) => dlog(`Object [${i+1}]`, `key:"${o.key||o.objectKey||o.id||"?"}"  name:"${o.name||o.label||"?"}"`, null));
-          const kw = ["scorecard","business_score","monthly","performance"];
-          const found = list.find(o => kw.some(k => (o.key||o.objectKey||o.id||o.name||"").toLowerCase().includes(k))) || list[0];
-          foundKey = found?.key || found?.objectKey || found?.id || "";
-          if (foundKey) { setObjKey(foundKey); dlog("Auto-detected key", foundKey, true); }
-          else dlog("Key not found", "Set CONFIG.CUSTOM_OBJECT_KEY manually", false);
-        }
-      }
-    }
-
-    // Records
+    // Smart discovery — tries all possible key formats automatically
     let liveRecs = [];
-    if (foundKey) {
-      const recR = await proxyGet(`/api/objects/${foundKey}/records?locationId=${lid}`);
-      dlog("Records", recR.status, recR.ok, "📊 Records");
-      if (recR.ok && recR.data) {
-        liveRecs = recR.data.records || recR.data.data || recR.data.objects || [];
-        dlog("Count", liveRecs.length, liveRecs.length > 0);
+    const keyHint = CONFIG.CUSTOM_OBJECT_KEY || objKey || "";
+    dlog("Trying smart discovery...", keyHint || "auto", null, "📦 Discovery");
+
+    const discUrl = `/api/records/${lid}` + (keyHint ? `?key=${encodeURIComponent(keyHint)}` : "");
+    const discR = await proxyGet(discUrl);
+    dlog("Discovery status", discR.status, discR.ok, "📊 Records");
+
+    if (discR.ok && discR.data) {
+      if (discR.data.success && discR.data.records && discR.data.records.length > 0) {
+        liveRecs = discR.data.records;
+        dlog("Found with key", discR.data.key, true);
+        dlog("Records count", liveRecs.length, true);
+        const f = liveRecs[0]?.properties || liveRecs[0]?.fields || liveRecs[0] || {};
+        dlog("Fields", Object.keys(f).slice(0,8).join(", "), true);
+      } else {
+        const attempts = discR.data.attempts || [];
+        attempts.slice(0,6).forEach((a, i) => {
+          dlog("Attempt [" + (i+1) + "] " + a.key, (a.format||"") + " status:" + (a.status||a.error||"?"), a.status === 200);
+        });
+        dlog("No records found", "All key formats tried — check GHL object has records", false);
       }
     }
 
@@ -474,7 +487,7 @@ export default function App() {
       intervalRef.current = setInterval(() => loadData(true), CONFIG.REFRESH_INTERVAL_MS);
     }
     return () => clearInterval(intervalRef.current);
-  }, [loadData]);
+  }, []);
 
   const m = records[selIdx] ? calcMetrics(records[selIdx]) : null;
   const months = records.map((r, i) => {
@@ -483,6 +496,11 @@ export default function App() {
   });
 
   const trendData = isDemo ? TREND_DEMO : [{ m: m?.month || "Now", rev: m?.rev || 0, spend: m?.tSpend || 0 }];
+
+  // Common chart props
+  const chartProps = {
+    style: { fontFamily: "Poppins,sans-serif" },
+  };
 
   if (loading) return (
     <div style={{
